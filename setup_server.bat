@@ -41,7 +41,7 @@ echo.
 if errorlevel 1 goto failed
 
 echo.
-echo Setup finished. Start the server with start.bat - see README_EN.md.
+echo Setup finished. Start the server with start.bat - see README.md.
 pause
 exit /b 0
 

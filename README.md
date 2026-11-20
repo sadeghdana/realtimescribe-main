@@ -1,182 +1,188 @@
-# RealTran — 中国語・日本語・英語の会議リアルタイム字幕
+# RealTran — live Chinese / Japanese / English meeting subtitles
 
-> **English:** [README_EN.md](README_EN.md)
+> **日本語:** [README.jp.md](README.jp.md)
 
-発言をその場で文字起こしし、1 文ごとに約 1〜3 秒で残り 2 言語に翻訳します。処理はすべて社内ネットワーク上の
-NVIDIA GPU 搭載 PC 1 台で行い、クラウドサービスは使いません。音声も文字も LAN の外には出ません。
+Speech is transcribed live and every sentence is translated into the other two languages within
+about 1–3 seconds. Everything runs on one PC with an NVIDIA GPU in your own network: no cloud
+service, audio and text never leave the LAN.
 
-| 処理 | モデル | 開発元 | ライセンス |
+| Step | Model | Developer | License |
 |---|---|---|---|
-| 音声認識（確定文） | Whisper large-v3 | OpenAI | Apache 2.0 |
-| 音声認識（リアルタイム表示） | Whisper large-v3-turbo | OpenAI | MIT |
-| 翻訳・議事録 | Gemma 4 E4B-it（テキスト部分のみ） | Google | Apache 2.0 |
-| 文の区切り検出 | Silero VAD | Silero | MIT |
+| Speech recognition (final text) | Whisper large-v3 | OpenAI | Apache 2.0 |
+| Speech recognition (live line) | Whisper large-v3-turbo | OpenAI | MIT |
+| Translation, meeting minutes | Gemma 4 E4B-it (text part only) | Google | Apache 2.0 |
+| Sentence splitting | Silero VAD | Silero | MIT |
 
-モデルはすべて Hugging Face の公式リポジトリから取得しており、商用利用できます。
+All models come from the official Hugging Face repositories and can be used commercially.
 
-## 必要なもの（サーバー PC）
+## Requirements (server PC)
 
-- Windows 10 / 11（64 ビット）
-- ビデオメモリ **16 GB** の NVIDIA GPU。モデルが約 13 GB 使います。
-  - 12 GB でも `--light` で動きますが、精度が少し下がります。
-  - 動作確認は RTX 5080（16 GB）で行いました。
-- 最新の NVIDIA ドライバー（CUDA 12.8 対応、バージョン 570 以降）
-- [python.org](https://www.python.org/downloads/windows/) の Python 3.12
-  - 3.10〜3.14 でも動きます。
-  - インストール時に「Add python.exe to PATH」にチェックを入れてください。
-- ディスクの空き約 30 GB（モデル 20 GB、Python パッケージ 5 GB）
-- インターネット接続（セットアップ時のみ：pytorch.org、pypi.org、huggingface.co）。運用中は何もダウンロードしません。
+- Windows 10 / 11, 64-bit.
+- NVIDIA GPU with **16 GB** of video memory: the models use about 13 GB. 12 GB works with
+  `--light`, which costs a little accuracy. Tested on an RTX 5080 (16 GB).
+- A recent NVIDIA driver (one that supports CUDA 12.8, i.e. version 570 or newer).
+- Python 3.12 from [python.org](https://www.python.org/downloads/windows/). Versions 3.10–3.14 also
+  work. In the installer, tick "Add python.exe to PATH".
+- About 30 GB of free disk space: 20 GB for the models and 5 GB for the Python packages.
+- Internet access during setup only (pytorch.org, pypi.org, huggingface.co). At run time nothing
+  is downloaded.
 
-## セットアップ（初回のみ）
+## Setup (once)
 
-1. プログラムを `C:\RealTran` のような短いパスに置きます。方法は次のどれでも構いません。
-   - git で取得する：
+1. Get the program into a short path such as `C:\RealTran`. Any one of these works:
+   - Clone it with git:
      ```
      git clone https://github.com/sadeghdana/realtimescribe-main.git C:\RealTran
      ```
-   - GitHub のページで **Code → Download ZIP** を選び、展開する。
-   - `RealTran_server.zip` を展開する。
+   - On the GitHub page, use **Code → Download ZIP** and unzip it.
+   - Unzip `RealTran_server.zip`.
 
-   深いフォルダーに置くとインストールに失敗します。パッケージ内には約 150 文字の深さのファイルがあり、Windows のパスの上限は 260 文字だからです。
-2. **`setup_server.bat`** をダブルクリックします。次の処理が自動で行われます。
-   - `.venv` に Python 環境を作る
-   - PyTorch と必要なパッケージをインストールする
-   - 3 つのモデルを `models\` にダウンロードする
-   - モデルの全ファイルを、Hugging Face が公開しているハッシュと照合する
+   A deep folder breaks the installation: some package files are nested ~150 characters deep, and
+   Windows allows 260.
+2. Double-click **`setup_server.bat`**. It:
+   - creates a Python environment in `.venv`;
+   - installs PyTorch and the other packages;
+   - downloads the three models to `models\`;
+   - checks every model file against the hashes Hugging Face publishes.
 
-   回線によって 20〜60 分かかります。途中で止まった場合は、もう一度実行すれば続きから再開します。
+   This takes 20–60 minutes depending on the connection. If it is interrupted, run it again: it
+   continues where it stopped.
 
-   huggingface.co に接続できないネットワークでは、別の RealTran サーバーから `models` フォルダーをコピーしてください。
-   コピー後は `.venv\Scripts\python.exe download_models.py --verify` で確認できます。
+   If huggingface.co is blocked on your network, copy the `models` folder from another RealTran
+   server instead. Then check it with `.venv\Scripts\python.exe download_models.py --verify`.
 
-## 更新
+## Updating
 
-1. 新しいバージョンを取得します。
-   - **git の場合：** RealTran フォルダーで `git pull` を実行します。
-   - **zip の場合：** もう一度ダウンロードし、古いファイルに上書きします。自分で編集した `glossary.txt` は上書きしないでください。
+1. Get the new version:
+   - **git:** run `git pull` in the RealTran folder.
+   - **zip:** download it again and copy it over the old files, except your own `glossary.txt`.
 
-   `models`、`.venv`、`meetings` はそのまま残ります。
-2. サーバーを再起動します。
-3. `requirements.txt` が変わった場合は、先に `setup_server.bat` をもう一度実行してください。
+   `models`, `.venv` and `meetings` are not touched.
+2. Restart the server.
+3. If `requirements.txt` changed, run `setup_server.bat` again first.
 
-## サーバーの起動
+## Starting the server
 
-PowerShell で RealTran フォルダーを開き、次を実行します。
+In PowerShell, in the RealTran folder:
 
 ```
 .\start.bat --no-local-audio
 ```
 
-- 読み込みに 30〜60 秒かかります。ウィンドウに `Ready.` と表示されたら準備完了です。
-- このウィンドウは開いたままにしてください。閉じるとサーバーが止まります。
-- 初回起動時に Windows がネットワークへのアクセスを許可するか確認してきます。
-  - プライベートネットワークで許可してください（管理者権限が必要です）。
-  - 許可しないと他の PC から接続できません。使うポートは TCP 8765 です。
+- Loading takes 30–60 seconds. The server is ready when the window prints `Ready.`
+- Keep that window open: closing it stops the server.
+- On the first start, Windows asks whether to allow network access. Allow it for private networks
+  (this needs administrator rights), otherwise other PCs cannot connect. The port is TCP 8765.
 
-`--no-local-audio` を付けない場合は、サーバー PC 自体のマイクも認識します。その字幕は
-`http://localhost:8766/?session=local` で表示されます。
+Without `--no-local-audio`, the server also listens to the server PC's own microphone. Its page
+then opens on that audio: `http://localhost:8766/?session=local`.
 
-## 使い方
+## Using it
 
-**A. サーバー PC 自体で使う（いちばん簡単）**
+**A. On the server PC itself (simplest)**
 
-サーバーの準備ができたら、`client\start_client_local.bat` をダブルクリックします。
+Once the server is ready, double-click `client\start_client_local.bat`. It captures this PC's
+microphone and its system audio (the remote participants in Teams / Zoom / Meet). The subtitles
+appear in an always-on-top bar at the bottom of the screen.
 
-- この PC のマイクとシステム音声（Teams / Zoom / Meet のオンライン参加者の声）を取り込みます。
-- 字幕は画面下の常に最前面のバーに表示されます。
+**B. On other PCs in the network**
 
-**B. ネットワーク内の他の PC で使う**
+1. On the server, run `.venv\Scripts\python.exe make_client_zip.py`. It creates
+   `RealTran_client.zip` with this server's address already filled in.
+2. Copy the zip to the other PCs and unzip it.
+3. Run `client\start_client_lan.bat` (Windows) or `client/start_client_lan.sh` (Mac).
 
-1. サーバーで `.venv\Scripts\python.exe make_client_zip.py` を実行します。このサーバーのアドレスが入った `RealTran_client.zip` ができます。
-2. その zip を他の PC にコピーして展開します。
-3. `client\start_client_lan.bat`（Windows）または `client/start_client_lan.sh`（Mac）を実行します。
+The other PCs need Python 3.10+. Details are in [client/README_EN.md](client/README_EN.md).
 
-他の PC には Python 3.10 以降が必要です。詳しくは [client/README.md](client/README.md) を参照してください。
+**C. Browser only (phones, PCs without Python)**
 
-**C. ブラウザだけで使う（スマートフォン、Python のない PC）**
+1. Open `https://<server address>:8765/`.
+2. Accept the certificate warning once. It appears because the certificate is self-signed.
+3. Click **🎤 Mic** to use that device's microphone.
 
-1. `https://<サーバーのアドレス>:8765/` を開きます。
-2. 証明書の警告が出たら、一度だけ許可してください。自己署名証明書を使っているため表示されます。
-3. **🎤 マイク** を押すと、その端末のマイクで認識できます。
+There is no subtitle bar and no system audio in this mode.
 
-このモードでは字幕バーとシステム音声は使えません。
+**Several users**
 
-**複数人での利用について**
+- Every PC and every browser is its own session: its captions, history and meeting records are not
+  shown to anyone else.
+- One server handles several meetings at once:
+  - 2–3 simultaneous meetings are fine.
+  - With more people speaking at the same time, translations lag by about 1 second, up to about
+    5 seconds at peaks.
+- There is no login, so anyone on the LAN who knows a session name (e.g. `pc:<computer name>`) can
+  open it in a browser. Use it on a trusted network only.
 
-- PC ごと、ブラウザごとに独立したセッションになります。字幕・履歴・議事録が他の人に表示されることはありません。
-- サーバー 1 台で複数の会議を同時に処理できます。
-  - 2〜3 会議の同時利用は問題ありません。
-  - それ以上の人が同時に話すと翻訳が 1 秒ほど遅れ、混雑時は最大 5 秒ほど遅れます。
-- ログイン機能はありません。セッション名（例：`pc:<コンピューター名>`）を知っていれば、LAN 内の誰でもブラウザで開けます。信頼できるネットワーク内でのみ使ってください。
+## Switching the interface to English
 
-## 表示言語
+The interface starts in Japanese. You only need to switch it once per device.
 
-画面の表示は最初は日本語です。設定は端末ごとに記憶されます。
+- **Web page:** use the language selector at the top right. Choose which caption languages to show
+  with the ZH / JA / EN buttons.
+- **Subtitle bar:**
+  1. Right-click it, then choose **表示言語 / 界面语言 / Language → English**.
+  2. Right-click again and tick **Show English**. Untick the languages you do not need.
 
-- **Web ページ：** 右上の選択欄で表示言語を変えられます。字幕に表示する言語は「中 / 日 / 英」ボタンで選びます。
-- **字幕バー：** 右クリック →「表示言語 / 界面语言 / Language」で表示言語を変えられます。同じメニューの「中国語を表示」「日本語を表示」「英語を表示」で、字幕に出す言語を選びます。
+## Recording meetings and AI minutes
 
-## 会議の記録と AI 議事録
+Nothing is saved unless you press **⏺ Record**: on the web page, or right-click the subtitle bar →
+**Start recording the meeting**. From then on, your own session's sentences and their translations
+are saved to `meetings\<date_time>\`.
 
-**⏺ 記録開始** を押すまで何も保存されません。
+When you stop, Gemma writes the minutes in the interface language: summary, topics, decisions,
+to-dos and open issues. To see them, open the web page's **Minutes** tab, or right-click the
+subtitle bar → **Open the minutes**. You can download the minutes and the transcript as `.md`, or
+have the minutes rewritten in another language.
 
-- Web ページのボタン、または字幕バーの右クリック →「議事録の記録を開始」で開始します。
-- 開始後、自分のセッションの発言と翻訳が `meetings\<日付_時刻>\` に保存されます。
+## Better accuracy: `glossary.txt`
 
-記録を終了すると、Gemma が表示言語で議事録を作成します。内容は概要・議題・決定事項・ToDo・未決事項です。
+Put the names, products and technical terms your team uses into `glossary.txt`, one per line,
+optionally with their spelling in each language. They are given to both the speech recognition and
+the translation. Restart the server after editing it.
 
-- **確認：** Web ページの「議事録」タブ、または字幕バーの右クリック →「議事録を開く」で確認できます。
-- **ダウンロード：** 議事録と文字起こしは `.md` でダウンロードできます。
-- **他の言語：** 議事録を別の言語で作り直すこともできます。
+## Options
 
-## 精度を上げる：`glossary.txt`
+Add these after `start.bat`.
 
-社内でよく使う人名・製品名・専門用語を `glossary.txt` に 1 行ずつ書いてください。各言語の表記を並べて書くこともできます。
-
-- 書いた内容は音声認識と翻訳の両方に使われます。
-- 編集後はサーバーを再起動してください。
-
-## オプション
-
-`start.bat` の後ろに付けます。
-
-| オプション | 内容 |
+| Option | Effect |
 |---|---|
-| `--no-local-audio` | サーバー PC 自体のマイクを使わない（音声はクライアント / ブラウザから受け取る） |
-| `--light` | 確定文にも Whisper turbo を使う。ビデオメモリを約 3 GB 節約できるが、精度が少し下がる |
-| `--end-silence-ms 600` | 文の終わりとみなす無音の長さ。短いほど速いが、文が細かく切れる |
-| `--commit-sentences 2` | 間を待たずに、この数の文がそろった時点で翻訳する（0 で無効） |
-| `--no-translate` | 文字起こしのみ（翻訳モデルを読み込まない） |
-| `--loopback` | マイクの代わりに、サーバー PC が再生している音声を認識する |
-| `--log-all` | 記録中だけでなく、すべての発言を `transcripts\` に保存する |
+| `--no-local-audio` | Do not listen to the server PC's own microphone (audio comes from clients / browsers) |
+| `--light` | Use Whisper turbo for the final text too: saves about 3 GB of VRAM, slightly less accurate |
+| `--end-silence-ms 600` | Pause that ends a sentence; shorter = faster, but more fragmented sentences |
+| `--commit-sentences 2` | Translate after this many finished sentences without waiting for a pause (0 = off) |
+| `--no-translate` | Transcription only, no translation model |
+| `--loopback` | Caption what the server PC plays, instead of its microphone |
+| `--log-all` | Also log every sentence to `transcripts\`, not only while recording |
 
-## トラブルシューティング
+## Troubleshooting
 
-- **字幕が遅れる：** ビデオメモリが足りていない可能性があります。GPU を使う他のプログラムを閉じるか、`--light` で起動してください。
-- **`Ready.` が表示されない、CUDA のエラーが出る：** NVIDIA ドライバーを更新してください。
-- **他の PC から接続できない：** 次の点を確認してください。
-  - Windows ファイアウォールで TCP 8765 の受信が許可されているか
-  - 同じネットワークにいるか
-  - 起動スクリプトのアドレスがサーバーの現在のアドレスと合っているか。変わった場合は `make_client_zip.py` で zip を作り直してください。
-- **字幕バーの背景で文字が隠れる：** クライアントをバージョン 2026.10.23-12 以降に更新してください。
-- **誰も話していないのに変な文が出る**（例：「ご視聴ありがとうございました」）：
-  - Whisper が雑音から作り出してしまう文です。
-  - 既知のものは `realtran/asr.py` で除去しています。
-  - 新しく見つけたものは、同じファイルの `HALLUCINATIONS` に追加できます。
+- **Subtitles lag:** video memory is probably full. Close other programs that use the GPU, or start
+  with `--light`.
+- **`Ready.` never appears, or CUDA errors:** update the NVIDIA driver.
+- **Other PCs cannot connect:**
+  - Check that Windows Firewall allows TCP 8765 inbound.
+  - Check that the PCs are on the same network.
+  - Check that the address in their launcher is the server's current address. If it changed,
+    rebuild the zip with `make_client_zip.py`.
+- **Text is hidden behind the subtitle bar's background:** update the client to version
+  2026.10.23-12 or newer.
+- **Odd sentences when nobody speaks** (e.g. "Thanks for watching"): Whisper invents these from
+  noise. Known ones are filtered in `realtran/asr.py`. New ones can be added to `HALLUCINATIONS`
+  there.
 
-## ファイル構成
+## Files
 
 ```
-setup_server.bat     初回セットアップ（Python 環境 + モデル）
-download_models.py   モデルのダウンロード / 確認
-start.bat            サーバーの起動
-make_client_zip.py   他の PC 用のクライアント zip を作る（このサーバーのアドレス入り）
-make_server_zip.py   サーバー一式を別の PC 用に zip にまとめる
-app.py               サーバー本体の起動スクリプト
-realtran/            音声認識・文の区切り・翻訳・議事録・Web サーバー
-web/index.html       Web ページ
-client/              デスクトップクライアント（マイク + システム音声 → 字幕バー）
-glossary.txt         人名・用語集
-models/              モデル（セットアップで作成）
-meetings/            会議の記録と議事録（記録したときに作成）
+setup_server.bat     one-time setup (Python environment + models)
+download_models.py   downloads / verifies the models
+start.bat            starts the server
+make_client_zip.py   packs the desktop client for other PCs, with this server's address
+make_server_zip.py   packs the server program for installing on another PC
+app.py               server entry point
+realtran/            speech recognition, segmentation, translation, minutes, web server
+web/index.html       the web page
+client/              desktop client (microphone + system audio -> subtitle bar)
+glossary.txt         your names and terms
+models/              model weights (created by setup)
+meetings/            recorded meetings and minutes (created when you record)
 ```

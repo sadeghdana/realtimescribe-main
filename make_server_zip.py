@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 FILES = [
-    "README.md", "README_EN.md", "setup_server.bat", "download_models.py", "start.bat", "make_client_zip.py",
+    "README.md", "README.jp.md", "setup_server.bat", "download_models.py", "start.bat", "make_client_zip.py",
     "requirements.txt", "glossary.txt", "app.py",
     *sorted(f"realtran/{p.name}" for p in (ROOT / "realtran").glob("*.py")),
     "web/index.html",
