@@ -1,0 +1,882 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RealTran</title>
+<style>
+  :root {
+    --bg: #0d0f12;
+    --panel: #15181d;
+    --line: #262b33;
+    --text: #f2f4f7;
+    --dim: #8b94a1;
+    --faint: #555d69;
+    --accent: #4f8cff;
+    --zh: #ff7a6b;
+    --ja: #5fb3ff;
+    --en: #7fd18b;
+    --fs: 34px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", "Microsoft YaHei UI", "Yu Gothic UI", "Hiragino Sans", "PingFang SC", sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+    font-size: 14px;
+  }
+  header .brand { font-weight: 600; letter-spacing: .02em; margin-right: 6px; }
+  .status { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); min-width: 90px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); }
+  .dot.listening { background: #3ecf6e; box-shadow: 0 0 0 0 rgba(62,207,110,.6); animation: pulse 1.6s infinite; }
+  .dot.paused { background: #f0b429; }
+  .dot.loading { background: var(--accent); }
+  .dot.offline { background: #e5484d; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(62,207,110,.55); } 70% { box-shadow: 0 0 0 7px rgba(62,207,110,0); } 100% { box-shadow: 0 0 0 0 rgba(62,207,110,0); } }
+  .spacer { flex: 1; }
+  .group { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .group button { border: 0; border-radius: 0; }
+  .group button + button { border-left: 1px solid var(--line); }
+  button {
+    background: transparent; color: var(--dim); border: 1px solid var(--line); border-radius: 8px;
+    padding: 5px 11px; font: inherit; cursor: pointer;
+  }
+  button:hover { color: var(--text); background: #1c2027; }
+  button.on { color: var(--text); background: #222833; }
+  button.lang-zh.on { color: var(--zh); }
+  button.lang-ja.on { color: var(--ja); }
+  button.lang-en.on { color: var(--en); }
+
+  main { flex: 1; min-height: 0; position: relative; }
+
+  /* ---- caption view ---- */
+  #captions { height: 100%; display: flex; flex-direction: column; padding: 12px 24px 20px; gap: 10px; }
+  .band {
+    flex: 1; min-height: 0; display: flex; gap: 18px; align-items: flex-end;
+    border-bottom: 1px solid var(--line); padding-bottom: 10px; overflow: hidden;
+  }
+  .band:last-child { border-bottom: 0; }
+  .band .tag {
+    flex: none; width: 64px; font-size: 13px; font-weight: 600; letter-spacing: .05em;
+    padding-bottom: calc(var(--fs) * .32); color: var(--dim);
+  }
+  .band.zh .tag { color: var(--zh); } .band.ja .tag { color: var(--ja); } .band.en .tag { color: var(--en); }
+  .band .lines {
+    flex: 1; min-width: 0; align-self: stretch; overflow: hidden;
+    display: flex; flex-direction: column; justify-content: flex-end; gap: calc(var(--fs) * .22);
+    /* when old lines no longer fit they fade out at the top instead of being cut off */
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 calc(var(--fs) * 1.2));
+    mask-image: linear-gradient(to bottom, transparent 0, #000 calc(var(--fs) * 1.2));
+  }
+  .cap { font-size: calc(var(--fs) * var(--k, 1)); line-height: 1.35; font-weight: 500; overflow-wrap: anywhere; }
+  .cap.old { color: #b9c1cc; font-size: calc(var(--fs) * .88 * var(--k, 1)); font-weight: 400; }
+  /* Per-language fonts: Japanese in a Japanese typeface (not Chinese glyph shapes), enlarged
+     slightly because Meiryo's kanji are ~7% smaller than Microsoft YaHei's at the same size. */
+  .cap:lang(zh), td:lang(zh) { font-family: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif; }
+  .cap:lang(ja), td:lang(ja) { font-family: Meiryo, "Hiragino Sans", "Yu Gothic", "Noto Sans CJK JP", sans-serif; --k: 1.07; }
+  .cap:lang(en), td:lang(en) { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+  td:lang(ja) { font-size: 1.07em; }
+  .cap.older { color: var(--dim); }
+  .band .tag.busy::after {
+    content: ""; display: block; width: 6px; height: 6px; border-radius: 50%; margin-top: 6px;
+    background: currentColor; opacity: .8;
+  }
+  .lines-ctl { display: inline-flex; align-items: center; }
+  .lines-ctl span { padding: 0 8px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .cap.src::before {
+    content: ""; display: inline-block; width: .28em; height: .28em; border-radius: 50%;
+    background: currentColor; opacity: .55; margin: 0 .35em .18em 0; vertical-align: middle;
+  }
+  .cap.live { color: var(--dim); }
+  .cap.live::after { content: "▍"; color: var(--accent); opacity: .7; margin-left: 2px; }
+  .cap.pending { color: var(--faint); }
+  .cap.pending::after { content: "…"; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ---- transcript view ---- */
+  #transcript { height: 100%; overflow-y: auto; padding: 0 16px 24px; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 16px; line-height: 1.55; }
+  thead th {
+    position: sticky; top: 0; background: var(--bg); text-align: left; font-size: 13px; font-weight: 600;
+    padding: 10px 10px 8px; border-bottom: 1px solid var(--line); color: var(--dim);
+  }
+  th.zh { color: var(--zh); } th.ja { color: var(--ja); } th.en { color: var(--en); }
+  th.time, td.time { width: 96px; }
+  td { vertical-align: top; padding: 9px 10px; border-bottom: 1px solid #1b1f25; overflow-wrap: anywhere; }
+  td.time { color: var(--faint); font-variant-numeric: tabular-nums; font-size: 13px; padding-top: 12px; }
+  td.src { background: #151a22; box-shadow: inset 2px 0 0 var(--accent); }
+  td.time .srcname { font-size: 11px; color: var(--faint); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  td.pending { color: var(--faint); }
+  tr.live td { color: var(--dim); font-style: italic; }
+  .empty { color: var(--faint); text-align: center; padding: 60px 0; font-size: 15px; }
+
+  html:lang(ja) body { font-family: "Segoe UI", Meiryo, "Yu Gothic UI", "Hiragino Sans", sans-serif; }
+  #uiLang {
+    background: transparent; color: var(--dim); border: 1px solid var(--line); border-radius: 8px;
+    padding: 5px 6px; font: inherit; cursor: pointer;
+  }
+  #uiLang option { background: var(--panel); color: var(--text); }
+  .source { color: var(--faint); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #micBtn { display: inline-flex; align-items: center; gap: 7px; }
+  #micBtn.on { color: #fff; background: #c8313a; border-color: #c8313a; }
+  #micBtn .meter { width: 34px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.18); overflow: hidden; display: none; }
+  #micBtn.on .meter { display: inline-block; }
+  #micBtn .meter i { display: block; height: 100%; width: 0; background: #fff; transition: width 80ms linear; }
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 10;
+    background: #2a2f38; color: var(--text); padding: 10px 16px; border-radius: 8px; font-size: 14px;
+    box-shadow: 0 6px 24px rgba(0,0,0,.4); max-width: calc(100% - 32px);
+  }
+
+  #recBtn.on { color: #fff; background: #c8313a; border-color: #c8313a; font-variant-numeric: tabular-nums; }
+  #recBtn:disabled { opacity: .45; cursor: default; }
+
+  /* ---- minutes view ---- */
+  #minutes { height: 100%; overflow-y: auto; padding: 16px 24px 32px; display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: 24px; align-items: start; }
+  .mt-list { display: flex; flex-direction: column; gap: 8px; }
+  .mt-item { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; cursor: pointer; background: var(--panel); }
+  .mt-item:hover { border-color: #3a4250; }
+  .mt-item.sel { border-color: var(--accent); }
+  .mt-item .when { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .mt-item .meta { color: var(--dim); font-size: 13px; margin-top: 2px; }
+  .mt-item .state { font-size: 12px; margin-top: 4px; color: var(--faint); }
+  .mt-item .state.busy { color: #f0b429; } .mt-item .state.rec { color: #e5484d; } .mt-item .state.err { color: #e5484d; }
+  .mt-view { min-width: 0; }
+  .mt-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: center; }
+  .mt-actions a { color: var(--dim); border: 1px solid var(--line); border-radius: 8px; padding: 5px 11px; text-decoration: none; font-size: 14px; }
+  .mt-actions a:hover { color: var(--text); background: #1c2027; }
+  .md { line-height: 1.7; font-size: 15px; max-width: 860px; }
+  .md h1 { font-size: 22px; margin: 0 0 10px; } .md h2 { font-size: 17px; margin: 22px 0 6px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+  .md h3 { font-size: 15px; margin: 16px 0 4px; } .md ul { margin: 4px 0 8px; padding-left: 22px; } .md p { margin: 6px 0; }
+  .md blockquote { margin: 8px 0 14px; padding: 6px 12px; border-left: 3px solid var(--line); color: var(--dim); font-size: 13px; }
+  .md-empty { color: var(--faint); padding: 40px 0; }
+
+  .hidden { display: none !important; }
+
+  @media (max-width: 720px) {
+    :root { --fs: 22px; }
+    header { padding: 8px 12px; gap: 8px; }
+    .source { display: none; }
+    #captions { padding: 8px 16px 12px; }
+    .band { gap: 10px; }
+    .band .tag { width: 40px; font-size: 11px; }
+    th.time, td.time { width: 54px; }
+    table { font-size: 14px; }
+    #transcript { padding: 0 8px 16px; }
+    #minutes { grid-template-columns: 1fr; padding: 12px 16px 24px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">RealTran</span>
+  <span class="status"><span class="dot" id="dot"></span><span id="statusText"></span></span>
+  <span class="source" id="sourceText"></span>
+  <span class="spacer"></span>
+  <span class="group" id="viewGroup">
+    <button data-view="captions"></button>
+    <button data-view="transcript"></button>
+    <button data-view="minutes"></button>
+  </span>
+  <span class="group" id="langGroup">
+    <button class="lang-zh" data-lang="zh"></button>
+    <button class="lang-ja" data-lang="ja"></button>
+    <button class="lang-en" data-lang="en"></button>
+  </span>
+  <span class="group lines-ctl" id="linesCtl">
+    <button id="linesDown">−</button><span id="linesVal"></span><button id="linesUp">+</button>
+  </span>
+  <span class="group">
+    <button id="fontDown">A−</button>
+    <button id="fontUp">A+</button>
+  </span>
+  <button id="micBtn"><span id="micLabel"></span><span class="meter"><i id="micLevel"></i></span></button>
+  <button id="recBtn"></button>
+  <button id="pauseBtn"></button>
+  <button id="speakBtn"></button>
+  <span class="group hidden" id="inputGroup">
+    <button data-input="mic"></button>
+    <button data-input="speaker"></button>
+    <button data-input="both"></button>
+  </span>
+  <button id="exportBtn"></button>
+  <select id="uiLang">
+    <option value="ja">日本語</option>
+    <option value="zh">中文</option>
+    <option value="en">English</option>
+  </select>
+</header>
+<main>
+  <section id="captions"></section>
+  <section id="transcript" class="hidden">
+    <table>
+      <thead><tr id="thead"></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="empty" id="emptyHint"></div>
+  </section>
+  <section id="minutes" class="hidden">
+    <div class="mt-list" id="mtList"></div>
+    <div class="mt-view" id="mtView"></div>
+  </section>
+</main>
+<div class="toast hidden" id="toast"></div>
+<script>
+const LANGS = ["zh", "ja", "en"];
+
+// UI strings. Caption text itself is never translated here; only the interface around it.
+const I18N = {
+  ja: {
+    title: "RealTran リアルタイム字幕",
+    names: { zh: "中国語", ja: "日本語", en: "英語" },
+    short: { zh: "中", ja: "日", en: "英" },
+    state: { listening: "認識中", paused: "一時停止中", loading: "モデル読込中", idle: "音声入力待ち", offline: "未接続" },
+    captions: "字幕", transcript: "履歴",
+    lines: n => `${n} 文`, linesTitle: "各言語に表示する文の数",
+    fontDown: "文字を小さく", fontUp: "文字を大きく",
+    mic: "🎤 マイク", micStop: "🎤 停止", micTitle: "このデバイスのマイクを音声入力にする",
+    pause: "一時停止", resume: "再開",
+    exportBtn: "書き出し", exportTitle: "表示中の字幕をテキストで保存",
+    minutes: "議事録", recStart: "⏺ 記録開始", recStop: "⏹ 記録終了",
+    recTitle: "押した時点からの発言を保存し、終了時に AI で議事録を作成します", recNA: "翻訳モデルが無いため要約は作成できません",
+    mtEmpty: "まだ記録はありません。「⏺ 記録開始」を押すと、その時点からの発言が保存されます。",
+    mtRecording: "記録中", mtSummarizing: (d, t) => `議事録を作成中 ${d}/${t || "…"}`, mtError: "要約に失敗しました",
+    mtNoMinutes: "この言語の議事録はまだありません。", mtCount: n => `${n} 発言`, mtMin: n => `${n} 分`,
+    mtShowTranscript: "文字起こし", mtDlMinutes: "議事録 (.md)", mtDlTranscript: "文字起こし (.md)",
+    mtRegen: "この言語で作成", mtReady: "議事録ができました。", mtStarted: "記録を開始しました。",
+    mtStopped: "記録を終了しました。議事録を作成しています…",
+    empty: "発言を待っています…", idleHint: "「🎤 マイク」を押すと開始します",
+    kind: { system: "オンライン", mic: "ローカル" }, paren: ["（", "）"],
+    audio: "音声", device: "デバイス", uiTitle: "表示言語",
+    httpsNeeded: "ブラウザでマイクを使うには https が必要です。サーバーを --lan で起動し、https:// のアドレスで開いてください。",
+    micError: "マイクを開けません：", revoked: "別のデバイスがマイクを引き継ぎました。",
+    loadingRetry: "サーバーがまだモデルを読み込んでいます。少し待ってから再度お試しください。",
+    micClosed: "マイクの接続が切れました。",
+    speak: "🔊 英語を読み上げ", speakTitle: "英語に翻訳された発言を音声で読み上げます",
+    input: { mic: "🎤 マイクのみ", speaker: "🔈 スピーカーのみ", both: "マイク＋スピーカー" },
+    inputTitle: "どの音声を翻訳するか：このPCのマイク、このPCで再生中の音（オンライン会議の相手）、または両方",
+  },
+  zh: {
+    title: "RealTran 实时字幕",
+    names: { zh: "中文", ja: "日语", en: "英语" },
+    short: { zh: "中", ja: "日", en: "英" },
+    state: { listening: "识别中", paused: "已暂停", loading: "加载模型", idle: "等待音源", offline: "未连接" },
+    captions: "字幕", transcript: "记录",
+    lines: n => `${n} 句`, linesTitle: "每种语言显示几句",
+    fontDown: "缩小字号", fontUp: "放大字号",
+    mic: "🎤 麦克风", micStop: "🎤 停止", micTitle: "把这台设备的麦克风作为音源",
+    pause: "暂停", resume: "继续",
+    exportBtn: "导出", exportTitle: "把当前显示的字幕保存为文本",
+    minutes: "议事录", recStart: "⏺ 开始记录", recStop: "⏹ 结束记录",
+    recTitle: "从按下开始保存发言，结束时用 AI 生成议事录", recNA: "没有加载翻译模型，无法生成摘要",
+    mtEmpty: "还没有记录。按「⏺ 开始记录」后，从那一刻起的发言会被保存。",
+    mtRecording: "记录中", mtSummarizing: (d, t) => `正在生成议事录 ${d}/${t || "…"}`, mtError: "生成摘要失败",
+    mtNoMinutes: "还没有这个语言的议事录。", mtCount: n => `${n} 句`, mtMin: n => `${n} 分钟`,
+    mtShowTranscript: "文字记录", mtDlMinutes: "议事录 (.md)", mtDlTranscript: "文字记录 (.md)",
+    mtRegen: "用这个语言生成", mtReady: "议事录已生成。", mtStarted: "已开始记录。",
+    mtStopped: "已结束记录，正在生成议事录…",
+    empty: "等待发言…", idleHint: "点击「🎤 麦克风」开始",
+    kind: { system: "线上", mic: "本地" }, paren: ["（", "）"],
+    audio: "音频", device: "设备", uiTitle: "界面语言",
+    httpsNeeded: "浏览器只允许在 https 页面使用麦克风：请用 --lan 启动服务器，并通过 https:// 地址打开。",
+    micError: "无法打开麦克风：", revoked: "另一台设备接管了麦克风。",
+    loadingRetry: "服务器还在加载模型，请稍后再试。",
+    micClosed: "麦克风连接已断开。",
+    speak: "🔊 朗读英语", speakTitle: "用语音朗读翻译成英语的发言",
+    input: { mic: "🎤 仅麦克风", speaker: "🔈 仅扬声器", both: "麦克风＋扬声器" },
+    inputTitle: "翻译哪种声音：本机麦克风、本机正在播放的声音（线上会议的对方），或两者",
+  },
+  en: {
+    title: "RealTran live captions",
+    names: { zh: "Chinese", ja: "Japanese", en: "English" },
+    short: { zh: "ZH", ja: "JA", en: "EN" },
+    state: { listening: "Listening", paused: "Paused", loading: "Loading models", idle: "No audio source", offline: "Offline" },
+    captions: "Captions", transcript: "Transcript",
+    lines: n => `${n} lines`, linesTitle: "Sentences shown per language",
+    fontDown: "Smaller text", fontUp: "Larger text",
+    mic: "🎤 Mic", micStop: "🎤 Stop", micTitle: "Use this device's microphone as the audio source",
+    pause: "Pause", resume: "Resume",
+    exportBtn: "Export", exportTitle: "Save the captions on screen as text",
+    minutes: "Minutes", recStart: "⏺ Record", recStop: "⏹ Stop",
+    recTitle: "Saves what is said from now on; when stopped, AI writes the minutes", recNA: "No translation model loaded: minutes cannot be generated",
+    mtEmpty: "Nothing recorded yet. Press “⏺ Record” to keep what is said from then on.",
+    mtRecording: "Recording", mtSummarizing: (d, t) => `Writing minutes ${d}/${t || "…"}`, mtError: "Summary failed",
+    mtNoMinutes: "No minutes in this language yet.", mtCount: n => `${n} utterances`, mtMin: n => `${n} min`,
+    mtShowTranscript: "Transcript", mtDlMinutes: "Minutes (.md)", mtDlTranscript: "Transcript (.md)",
+    mtRegen: "Write in this language", mtReady: "The minutes are ready.", mtStarted: "Recording started.",
+    mtStopped: "Recording stopped. Writing the minutes…",
+    empty: "Waiting for speech…", idleHint: "Press “🎤 Mic” to start",
+    kind: { system: "online", mic: "local" }, paren: [" (", ")"],
+    audio: "audio", device: "device", uiTitle: "Interface language",
+    httpsNeeded: "Browsers only allow the microphone on https pages: start the server with --lan and open its https:// address.",
+    micError: "Cannot open the microphone: ", revoked: "Another device took over the microphone.",
+    loadingRetry: "The server is still loading its models. Please try again shortly.",
+    micClosed: "Microphone connection closed.",
+    speak: "🔊 Speak English", speakTitle: "Read the English translation of each sentence aloud",
+    input: { mic: "🎤 Mic only", speaker: "🔈 Speaker only", both: "Mic + Speaker" },
+    inputTitle: "Which sound to translate: this PC's microphone, what this PC plays (online meeting participants), or both",
+  },
+};
+let ui = store_get("ui", "ja");
+
+// This browser's own session: its captions, history and meeting records are never shared with
+// other connections. ?session=... (the desktop client's "open the minutes") shows that PC's session.
+const SESSION = (() => {
+  const fromUrl = new URLSearchParams(location.search).get("session");
+  if (fromUrl) return fromUrl;
+  // Opened on this computer: show this computer's own audio (microphone / speaker).
+  if (["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)) return "local";
+  let s = store_get("session", null);
+  if (!s) {
+    s = "web:" + Math.random().toString(36).slice(2, 10);
+    try { localStorage.setItem("realtran.session", JSON.stringify(s)); } catch {}
+  }
+  return s;
+})();
+const T = () => I18N[ui] || I18N.ja;
+
+function store_get(k, d) {
+  try { const v = localStorage.getItem("realtran." + k); return v === null ? d : JSON.parse(v); } catch { return d; }
+}
+
+// "mypc（オンライン）": the client sends its host name; the kind comes from the channel id.
+function srcLabel(ch, name) {
+  ch = ch || "";
+  const kind = ch.endsWith(":system") ? "system" : ch.endsWith(":mic") ? "mic" : "";
+  const [l, r] = T().paren;
+  return kind ? `${name}${l}${T().kind[kind]}${r}` : name;
+}
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("realtran." + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("realtran." + k, JSON.stringify(v)); } catch {} },
+};
+
+const settings = {
+  view: location.hash === "#minutes" ? "minutes" : store.get("view", "captions"),
+  langs: store.get("langs", LANGS),
+  fs: store.get("fs", 34),
+  lines: store.get("lines", 3),
+  speak: store.get("speak", false),
+};
+
+const segments = new Map();   // id -> {id, lang, text, tr, t}
+const live = new Map();       // channel -> {id, lang, text}: sentences being spoken right now
+let status = {};
+let ws = null;
+
+// ---------- rendering ----------
+// Languages this server works in (start options --langs / --to): the others are never shown.
+const served = l => !status.langs || status.langs.includes(l);
+// The chosen languages this server has; all of them if the choice (saved earlier, maybe for
+// another server) has none, so the page is never blank.
+function shownLangs() {
+  const chosen = LANGS.filter(l => served(l) && settings.langs.includes(l));
+  return chosen.length ? chosen : LANGS.filter(served);
+}
+function textFor(seg, lang) {
+  if (seg.lang === lang) return { text: seg.text, cls: "src" };
+  const t = seg.tr && seg.tr[lang];
+  return t ? { text: t, cls: "" } : { text: "", cls: "pending" };
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function renderCaptions() {
+  const root = document.getElementById("captions");
+  root.replaceChildren();
+  const n = settings.lines;
+  const segs = [...segments.values()];
+  for (const lang of shownLangs()) {
+    // Newest n lines that already exist in this language. A translation that is still being
+    // generated does not take a line (that would push older lines away before anyone has read
+    // them); the band's tag blinks instead.
+    const items = [];
+    let busy = [...live.values()].some(l => l.lang !== lang);
+    for (let i = segs.length - 1; i >= 0 && items.length < n; i--) {
+      const it = textFor(segs[i], lang);
+      if (it.cls === "pending") { busy = true; continue; }
+      items.unshift(it);
+    }
+    for (const l of live.values()) if (l.lang === lang) items.push({ text: l.text, cls: "live" });
+    const shown = items.slice(-n);
+
+    const band = el("div", "band " + lang);
+    band.append(el("div", "tag" + (busy ? " busy" : ""), T().names[lang]));
+    const lines = el("div", "lines");
+    shown.forEach((it, i) => {
+      const age = shown.length - 1 - i;
+      const cls = age === 0 ? "" : age === 1 ? " old" : " old older";
+      const line = el("div", "cap " + it.cls + cls, it.text);
+      line.lang = lang;
+      lines.append(line);
+    });
+    band.append(lines);
+    root.append(band);
+  }
+}
+
+function fmtTime(t) {
+  const d = new Date(t * 1000);
+  return d.toTimeString().slice(0, 8);
+}
+
+function renderTranscript() {
+  const box = document.getElementById("transcript");
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  const langs = shownLangs();
+
+  const head = document.getElementById("thead");
+  head.replaceChildren(el("th", "time", ""), ...langs.map(l => el("th", l, T().names[l])));
+
+  const body = document.getElementById("tbody");
+  body.replaceChildren();
+  for (const seg of segments.values()) {
+    const tr = el("tr");
+    const tc = el("td", "time", fmtTime(seg.t));
+    if (seg.src) tc.append(el("div", "srcname", srcLabel(seg.ch, seg.src)));
+    if (seg.asr_ms !== undefined) tc.title = `${T().audio} ${seg.dur}s · ASR ${seg.asr_ms}ms` + (seg.mt_ms ? ` · MT ${seg.mt_ms}ms` : "");
+    tr.append(tc);
+    for (const l of langs) {
+      const it = textFor(seg, l);
+      const td = el("td", it.cls, it.text || (it.cls === "pending" ? "…" : ""));
+      td.lang = l;
+      tr.append(td);
+    }
+    body.append(tr);
+  }
+  for (const l of live.values()) {
+    const tr = el("tr", "live");
+    tr.append(el("td", "time", ""));
+    for (const lg of langs) {
+      const td = el("td", "", l.lang === lg ? l.text : "");
+      td.lang = lg;
+      tr.append(td);
+    }
+    body.append(tr);
+  }
+  document.getElementById("emptyHint").textContent = T().empty;
+  document.getElementById("emptyHint").classList.toggle("hidden", segments.size > 0 || live.size > 0);
+  if (atBottom) box.scrollTop = box.scrollHeight;
+}
+
+let raf = 0;
+function render() {
+  if (raf) return;
+  raf = requestAnimationFrame(() => {
+    raf = 0;
+    document.querySelectorAll("#langGroup button").forEach(b => b.hidden = !served(b.dataset.lang));
+    if (settings.view === "captions") renderCaptions();
+    else if (settings.view === "transcript") renderTranscript();
+  });
+}
+
+function renderStatus() {
+  const s = ws && ws.readyState === 1 ? (status.state || "loading") : "offline";
+  document.getElementById("dot").className = "dot " + s;
+  document.getElementById("statusText").textContent = T().state[s] || s;
+  document.getElementById("pauseBtn").textContent = s === "paused" ? T().resume : T().pause;
+  document.getElementById("inputGroup").classList.toggle("hidden", !status.input || s === "offline");
+  document.getElementById("speakBtn").classList.toggle("on", macSpeaks() ? !!status.speak : settings.speak);
+  // On this computer the buttons above pick its audio; the browser-microphone button is for
+  // phones / other PCs and would only add the same microphone twice.
+  document.getElementById("micBtn").classList.toggle("hidden", !!status.input && !mic);
+  document.querySelectorAll("#inputGroup button").forEach(b => b.classList.toggle("on", b.dataset.input === status.input));
+  const names = (status.sources || []).map(x => typeof x === "string" ? x : srcLabel(x.ch, x.name));
+  const src = s === "offline" ? "" : (names.join(" · ") || (s === "idle" ? T().idleHint : ""));
+  document.getElementById("sourceText").textContent = src;
+  document.getElementById("sourceText").title = src;
+  document.title = (s === "listening" ? "● " : "") + T().title;
+  renderRec();
+}
+
+// ---------- meeting record + minutes ----------
+let meetings = [];
+let selMeeting = null;   // {id, file: "minutes" | "transcript"}
+
+function meetingState() { return status.meeting || {}; }
+
+function mmss(sec) {
+  sec = Math.max(0, Math.floor(sec));
+  const h = Math.floor(sec / 3600), m = Math.floor(sec / 60) % 60, s2 = sec % 60;
+  return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s2).padStart(2, "0");
+}
+
+function renderRec() {
+  const b = document.getElementById("recBtn"), m = meetingState(), online = ws && ws.readyState === 1;
+  b.classList.toggle("on", !!m.recording);
+  b.disabled = !online;
+  b.textContent = m.recording ? `${T().recStop} ${mmss(Date.now() / 1000 - m.started)}` : T().recStart;
+  b.title = m.available === false ? T().recNA : T().recTitle;
+}
+setInterval(() => { if (meetingState().recording) renderRec(); }, 1000);
+
+document.getElementById("recBtn").onclick = () => {
+  if (!ws || ws.readyState !== 1) return;
+  const rec = meetingState().recording;
+  ws.send(JSON.stringify(rec ? { cmd: "meeting_stop", lang: ui } : { cmd: "meeting_start" }));
+  toast(rec ? T().mtStopped : T().mtStarted);
+};
+
+async function loadMeetings(selectId) {
+  try {
+    const r = await fetch("/api/meetings?session=" + encodeURIComponent(SESSION));
+    meetings = (await r.json()).meetings || [];
+  } catch { meetings = []; }
+  if (selectId) selMeeting = { id: selectId, file: "minutes" };
+  if (!selMeeting && meetings.length) selMeeting = { id: meetings[0].id, file: "minutes" };
+  renderMeetings();
+  renderMeetingView();
+}
+
+function fmtDate(t) {
+  const d = new Date(t * 1000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${d.toTimeString().slice(0, 5)}`;
+}
+
+function renderMeetings() {
+  const box = document.getElementById("mtList"), t = T(), st = meetingState(), busy = st.summarizing || {};
+  box.replaceChildren();
+  if (!meetings.length && !st.recording) { box.append(el("div", "md-empty", t.mtEmpty)); return; }
+  for (const m of meetings) {
+    const item = el("div", "mt-item" + (selMeeting && selMeeting.id === m.id ? " sel" : ""));
+    item.append(el("div", "when", fmtDate(m.started)));
+    const end = m.ended || (st.recording && st.id === m.id ? Date.now() / 1000 : m.started);
+    item.append(el("div", "meta", `${t.mtMin(Math.max(1, Math.round((end - m.started) / 60)))} · ${t.mtCount(st.id === m.id ? st.count : m.count)}`));
+    let state = "", cls = "state";
+    if (st.recording && st.id === m.id) { state = t.mtRecording; cls += " rec"; }
+    else if (busy[m.id]) { state = t.mtSummarizing(busy[m.id].done, busy[m.id].total); cls += " busy"; }
+    else if (m.error) { state = t.mtError; cls += " err"; }
+    else state = Object.keys(m.minutes || {}).map(l => t.names[l]).join(" · ");
+    item.append(el("div", cls, state));
+    item.onclick = () => { selMeeting = { id: m.id, file: "minutes" }; renderMeetings(); renderMeetingView(); };
+    box.append(item);
+  }
+}
+
+// Minimal Markdown (headings, bullets, quotes, bold) for the minutes; everything is escaped first.
+function mdToHtml(md) {
+  const esc = x => x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const inline = x => esc(x).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  const out = [];
+  let list = false;
+  for (const raw of md.split("\n")) {
+    const line = raw.trimEnd();
+    const bullet = line.match(/^\s*[-*]\s+(.*)$/);
+    if (bullet) { if (!list) { out.push("<ul>"); list = true; } out.push(`<li>${inline(bullet[1])}</li>`); continue; }
+    if (list) { out.push("</ul>"); list = false; }
+    const h = line.match(/^(#{1,3})\s+(.*)$/);
+    if (h) out.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`);
+    else if (line.startsWith(">")) out.push(`<blockquote>${inline(line.replace(/^>\s?/, ""))}</blockquote>`);
+    else if (line.trim()) out.push(`<p>${inline(line)}</p>`);
+  }
+  if (list) out.push("</ul>");
+  return out.join("");
+}
+
+async function renderMeetingView() {
+  const box = document.getElementById("mtView"), t = T();
+  box.replaceChildren();
+  const m = selMeeting && meetings.find(x => x.id === selMeeting.id);
+  if (!m) return;
+  const base = `/api/meetings/${m.id}/`, minutesFile = `minutes_${ui}.md`;
+  const actions = el("div", "mt-actions");
+  const showT = el("button", selMeeting.file === "transcript" ? "on" : "", t.mtShowTranscript);
+  showT.onclick = () => { selMeeting.file = selMeeting.file === "transcript" ? "minutes" : "transcript"; renderMeetingView(); };
+  actions.append(showT);
+  const has = !!(m.minutes || {})[ui];
+  if (has) { const a = el("a", "", t.mtDlMinutes); a.href = base + minutesFile + "?download=1"; actions.append(a); }
+  const a2 = el("a", "", t.mtDlTranscript); a2.href = base + "transcript.md?download=1"; actions.append(a2);
+  const st = meetingState();
+  if (!(st.recording && st.id === m.id) && !(st.summarizing || {})[m.id] && st.available !== false) {
+    const regen = el("button", "", `${t.mtRegen}（${t.names[ui]}）`);
+    regen.onclick = () => ws && ws.readyState === 1 && ws.send(JSON.stringify({ cmd: "summarize", id: m.id, lang: ui }));
+    actions.append(regen);
+  }
+  box.append(actions);
+  const body = el("div", "md");
+  box.append(body);
+  const file = selMeeting.file === "transcript" ? "transcript.md" : (has ? minutesFile : null);
+  if (!file) { body.append(el("div", "md-empty", t.mtNoMinutes)); return; }
+  try {
+    const r = await fetch(base + file);
+    body.innerHTML = r.ok ? mdToHtml(await r.text()) : "";
+  } catch {}
+}
+
+function applySettings() {
+  document.documentElement.style.setProperty("--fs", settings.fs + "px");
+  document.getElementById("linesVal").textContent = T().lines(settings.lines);
+  document.getElementById("captions").classList.toggle("hidden", settings.view !== "captions");
+  document.getElementById("transcript").classList.toggle("hidden", settings.view !== "transcript");
+  document.getElementById("minutes").classList.toggle("hidden", settings.view !== "minutes");
+  if (settings.view === "minutes") loadMeetings();
+  document.querySelectorAll("#viewGroup button").forEach(b => b.classList.toggle("on", b.dataset.view === settings.view));
+  document.querySelectorAll("#langGroup button").forEach(b => b.classList.toggle("on", settings.langs.includes(b.dataset.lang)));
+  document.getElementById("speakBtn").classList.toggle("on", macSpeaks() ? !!status.speak : settings.speak);
+  render();
+}
+
+// ---------- websocket ----------
+function handle(msg) {
+  switch (msg.type) {
+    case "hello":
+      segments.clear();
+      for (const s of msg.segments) segments.set(s.id, s);
+      status = msg.status || {};
+      live.clear();
+      renderStatus();
+      break;
+    case "status":
+      status = msg;
+      renderStatus();
+      if (settings.view === "minutes") renderMeetings();
+      break;
+    case "minutes":
+      if (msg.ok) toast(T().mtReady);
+      if (settings.view === "minutes") loadMeetings(msg.id);
+      break;
+    case "partial":
+      live.set(msg.ch, msg);
+      break;
+    case "final":
+      segments.set(msg.id, { ...msg, tr: {} });
+      if (live.get(msg.ch)?.id === msg.id) live.delete(msg.ch);
+      break;
+    case "translation": {
+      const seg = segments.get(msg.id);
+      if (seg) { seg.tr = msg.tr; seg.mt_ms = msg.ms; }
+      if (seg && seg.lang !== "en") speak(msg.tr && msg.tr.en);
+      break;
+    }
+    case "input_error":
+      toast(msg.msg, 8000);
+      break;
+    case "drop":
+      if (live.get(msg.ch)?.id === msg.id) live.delete(msg.ch);
+      break;
+  }
+  render();
+}
+
+let retry = 500;
+function connect() {
+  ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws?session=${encodeURIComponent(SESSION)}`);
+  ws.onopen = () => { retry = 500; renderStatus(); };
+  ws.onmessage = e => handle(JSON.parse(e.data));
+  ws.onclose = () => { renderStatus(); setTimeout(connect, retry); retry = Math.min(retry * 2, 5000); };
+}
+
+// ---------- controls ----------
+document.querySelectorAll("#viewGroup button").forEach(b => b.onclick = () => {
+  settings.view = b.dataset.view; store.set("view", settings.view); applySettings();
+});
+document.querySelectorAll("#langGroup button").forEach(b => b.onclick = () => {
+  const l = b.dataset.lang;
+  const next = settings.langs.includes(l) ? settings.langs.filter(x => x !== l) : [...settings.langs, l];
+  if (!next.some(served)) return;
+  settings.langs = LANGS.filter(x => next.includes(x)); store.set("langs", settings.langs); applySettings();
+});
+document.getElementById("linesUp").onclick = () => { settings.lines = Math.min(5, settings.lines + 1); store.set("lines", settings.lines); applySettings(); };
+document.getElementById("linesDown").onclick = () => { settings.lines = Math.max(1, settings.lines - 1); store.set("lines", settings.lines); applySettings(); };
+document.getElementById("fontUp").onclick = () => { settings.fs = Math.min(80, settings.fs + 4); store.set("fs", settings.fs); applySettings(); };
+document.getElementById("fontDown").onclick = () => { settings.fs = Math.max(16, settings.fs - 4); store.set("fs", settings.fs); applySettings(); };
+document.querySelectorAll("#inputGroup button").forEach(b => b.onclick = () => {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ cmd: "input", mode: b.dataset.input }));
+});
+document.getElementById("pauseBtn").onclick = () => {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ cmd: status.state === "paused" ? "resume" : "pause" }));
+};
+document.getElementById("exportBtn").onclick = () => {
+  const lines = [];
+  for (const seg of segments.values()) {
+    lines.push(`[${fmtTime(seg.t)}] (${seg.lang}) ${seg.text}`);
+    for (const l of LANGS) if (l !== seg.lang && seg.tr && seg.tr[l]) lines.push(`    ${l}: ${seg.tr[l]}`);
+    lines.push("");
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
+  const a = el("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "meeting_" + new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "") + ".txt";
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+// ---------- this device as the microphone ----------
+const WORKLET_SRC = `
+class PcmCapture extends AudioWorkletProcessor {
+  constructor() { super(); this.buf = new Int16Array(2048); this.n = 0; this.sum = 0; }
+  process(inputs) {
+    const ch = inputs[0] && inputs[0][0];
+    if (ch) {
+      for (let i = 0; i < ch.length; i++) {
+        const s = Math.max(-1, Math.min(1, ch[i]));
+        this.buf[this.n++] = s < 0 ? s * 32768 : s * 32767;
+        this.sum += s * s;
+        if (this.n === this.buf.length) {
+          this.port.postMessage({ level: Math.sqrt(this.sum / this.n) });
+          this.port.postMessage(this.buf.buffer, [this.buf.buffer]);
+          this.buf = new Int16Array(2048); this.n = 0; this.sum = 0;
+        }
+      }
+    }
+    return true;
+  }
+}
+registerProcessor("pcm-capture", PcmCapture);`;
+
+let mic = null;  // {stream, ctx, ws}
+
+function toast(text, ms = 4000) {
+  const t = document.getElementById("toast");
+  t.textContent = text;
+  t.classList.remove("hidden");
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => t.classList.add("hidden"), ms);
+}
+
+function deviceLabel() {
+  const ua = navigator.userAgent;
+  const os = /iPhone|iPad/.test(ua) ? "iOS" : /Android/.test(ua) ? "Android" : /Mac/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : T().device;
+  return store.get("micName", os);
+}
+
+function renderMic(level) {
+  document.getElementById("micBtn").classList.toggle("on", !!mic);
+  document.getElementById("micLabel").textContent = mic ? T().micStop : T().mic;
+  if (level !== undefined) {
+    // map roughly -60..-10 dBFS onto the bar
+    const db = 20 * Math.log10(level + 1e-6);
+    document.getElementById("micLevel").style.width = Math.max(0, Math.min(100, (db + 60) * 2)) + "%";
+  }
+}
+
+function stopMic(reason) {
+  if (!mic) return;
+  const m = mic;
+  mic = null;
+  try { m.ws.onclose = null; m.ws.close(); } catch {}
+  m.stream.getTracks().forEach(t => t.stop());
+  m.ctx.close().catch(() => {});
+  renderMic(0);
+  if (reason) toast(reason);
+}
+
+async function startMic() {
+  if (!window.isSecureContext || !navigator.mediaDevices) {
+    toast(T().httpsNeeded, 7000);
+    return;
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: true },
+    });
+  } catch (e) {
+    toast(T().micError + e.message, 6000);
+    return;
+  }
+  const ctx = new AudioContext();
+  const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: "application/javascript" }));
+  await ctx.audioWorklet.addModule(url);
+  URL.revokeObjectURL(url);
+  const node = new AudioWorkletNode(ctx, "pcm-capture");
+  ctx.createMediaStreamSource(stream).connect(node);
+  node.connect(ctx.destination);  // outputs silence; keeps the node scheduled
+
+  const sock = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/audio`);
+  sock.binaryType = "arraybuffer";
+  mic = { stream, ctx, ws: sock };
+  sock.onopen = () => sock.send(JSON.stringify({ sr: ctx.sampleRate, name: deviceLabel(), session: SESSION }));
+  sock.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.type === "revoked") stopMic(T().revoked);
+    if (m.type === "error") stopMic(T().loadingRetry);
+  };
+  sock.onclose = () => stopMic(T().micClosed);
+  node.port.onmessage = e => {
+    if (e.data instanceof ArrayBuffer) {
+      if (sock.readyState === 1) sock.send(e.data);
+    } else if (mic) {
+      renderMic(e.data.level);
+    }
+  };
+  renderMic(0);
+}
+
+document.getElementById("micBtn").onclick = () => mic ? stopMic() : startMic();
+
+// ---------- read English translations aloud (browser / OS voices, nothing leaves this device) ----------
+function englishVoice() {
+  const voices = speechSynthesis.getVoices().filter(v => v.lang.startsWith("en"));
+  return voices.find(v => v.lang === "en-US" && /premium|enhanced|siri/i.test(v.name))
+      || voices.find(v => v.lang === "en-US") || voices[0] || null;
+}
+// Several tabs may show the same session (each restart opens one): only the tab holding this
+// lock speaks, so a sentence is never read twice. It passes on when that tab closes.
+let speaker = !navigator.locks;
+if (navigator.locks) navigator.locks.request("realtran-speaker:" + SESSION, () => { speaker = true; return new Promise(() => {}); });
+// On the computer running RealTran (status.speak is sent), the app itself speaks: its voice is kept
+// out of the speaker capture and cancelled from the microphone. The browser speaks elsewhere only.
+function macSpeaks() { return status.speak !== undefined; }
+function speak(text) {
+  if (macSpeaks() || !settings.speak || !speaker || !text || !window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "en-US";
+  const v = englishVoice();
+  if (v) u.voice = v;
+  u.rate = 1.1;
+  speechSynthesis.speak(u);  // queued: sentences are read one after another
+}
+document.getElementById("speakBtn").onclick = () => {
+  if (macSpeaks()) {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ cmd: "speak", on: !status.speak }));
+    return;
+  }
+  settings.speak = !settings.speak;
+  store.set("speak", settings.speak);
+  if (!settings.speak && window.speechSynthesis) speechSynthesis.cancel();
+  // Speaking once from a click unlocks audio in browsers that block autoplay.
+  else if (window.speechSynthesis) speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+  applySettings();
+};
+
+function applyI18n() {
+  const t = T();
+  document.documentElement.lang = ui;
+  document.querySelectorAll("#viewGroup button").forEach(b => b.textContent = t[b.dataset.view]);
+  document.querySelectorAll("#langGroup button").forEach(b => { b.textContent = t.short[b.dataset.lang]; b.title = t.names[b.dataset.lang]; });
+  document.getElementById("linesCtl").title = t.linesTitle;
+  document.getElementById("fontDown").title = t.fontDown;
+  document.getElementById("fontUp").title = t.fontUp;
+  document.getElementById("micBtn").title = t.micTitle;
+  document.getElementById("exportBtn").textContent = t.exportBtn;
+  document.getElementById("speakBtn").textContent = t.speak;
+  document.querySelectorAll("#inputGroup button").forEach(b => { b.textContent = t.input[b.dataset.input]; b.title = t.inputTitle; });
+  document.getElementById("speakBtn").title = t.speakTitle;
+  document.getElementById("exportBtn").title = t.exportTitle;
+  document.querySelector('#viewGroup button[data-view="minutes"]').textContent = t.minutes;
+  if (settings.view === "minutes") { renderMeetings(); renderMeetingView(); }
+  document.getElementById("uiLang").value = ui;
+  document.getElementById("uiLang").title = t.uiTitle;
+  renderMic();
+  renderStatus();
+  applySettings();
+}
+document.getElementById("uiLang").onchange = e => { ui = e.target.value; store.set("ui", ui); applyI18n(); };
+
+applyI18n();
+connect();
+</script>
+</body>
+</html>

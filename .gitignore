@@ -1,0 +1,16 @@
+# Large, machine-specific or private: never in the repository
+.venv/
+models/
+meetings/
+transcripts/
+certs/
+backup/
+__pycache__/
+*.pyc
+RealTran_client.zip
+RealTran_server.zip
+client/.venv/
+client/client_settings.json
+_e2e/
+bin/
+.DS_Store

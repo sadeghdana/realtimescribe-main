@@ -1,0 +1,11 @@
+# 用語集 / Glossary
+# 社内でよく使う人名・製品名・専門用語を 1 行に 1 つ書きます。各言語の表記を並べても構いません。
+# Names, products and technical terms your team uses, one per line, optionally with each language's spelling.
+# 音声認識（固有名詞の認識率向上）と翻訳（訳語の統一）の両方に使われます。編集後はサーバーを再起動してください。
+# Used by both the speech recognition and the translation. Restart the server after editing.
+# 「#」で始まる行は無視されます。 / Lines starting with # are ignored. 例 / Examples:
+#
+# Acme = アクメ = Acme
+# 数据库 = データベース = database
+# 智能手机 = スマートフォン = smartphone
+# 张三 (Zhang San) = チョウ・サン

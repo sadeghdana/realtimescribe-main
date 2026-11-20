@@ -1,0 +1,6 @@
+# Windows scripts need CRLF; shell scripts must keep LF, also when checked out on Windows
+# (the client zip built there is used on Macs too).
+* text=auto
+*.bat text eol=crlf
+*.sh text eol=lf
+*.png binary
